@@ -12,5 +12,22 @@
   "word-count": true,
   "file-recovery": true,
   "bookmarks": true,
-  "command-palette": true
+  "command-palette": true,
+  "canvas": true,
+  "footnotes": false,
+  "properties": true,
+  "daily-notes": true,
+  "note-composer": true,
+  "slash-command": false,
+  "editor-status": true,
+  "markdown-importer": false,
+  "zk-prefixer": false,
+  "random-note": false,
+  "slides": false,
+  "audio-recorder": false,
+  "workspaces": false,
+  "publish": false,
+  "sync": true,
+  "bases": true,
+  "webviewer": false
 }
