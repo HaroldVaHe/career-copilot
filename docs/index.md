@@ -25,11 +25,12 @@ cada oferta, investiga la empresa y te entrena para la entrevista.
 
 ## Estado
 
-Backend funcional con los seis módulos enrutados. Frontend recién inicializado
-(scaffold de `create-next-app`, sin pantallas propias todavía). Extensión de
-navegador aún no existe: el backend ya expone su contrato en `/api/v1/capture`.
+Backend funcional con los seis módulos enrutados. El frontend ya tiene sus
+cimientos — cliente de API tipado (`src/lib/`), kit de componentes, gráficos y
+navegación — pero todavía no hay pantallas por módulo. La extensión de navegador
+no existe aún: el backend ya expone su contrato en `/api/v1/capture`.
 
-| Módulo | Backend | Frontend |
+| Módulo | Backend | Pantalla |
 |---|---|---|
 | 1 — CV: parsing, ATS, tailoring | Listo | Pendiente |
 | 2 — Vacantes: ingesta, matching | Listo | Pendiente |
@@ -46,4 +47,5 @@ Cosas detectadas y aún no resueltas. Cuando una se cierre, se borra de aquí.
   `claude-haiku-4-5-20251001`. Conviene fijarlo para que la versión no se mueva sola.
 - No hay migraciones: el esquema se crea con `Base.metadata.create_all`. Ver
   [ADR 0003](adr/0003-sin-migraciones.md) para cuándo dejaría de valer.
-- `backend/tests/` existe pero está vacío.
+- `backend/tests/` existe pero está vacío, y `backend/smoke_tmp.py` es un script
+  de prueba manual que debería moverse allí o borrarse.
