@@ -219,14 +219,13 @@ def delete_application(application: ApplicationDep, db: DbSession):
 def add_task(application: ApplicationDep, payload: TaskCreate, db: DbSession):
     order = max((t.order_index for t in application.tasks), default=-1) + 1
     task = Task(
-        application_id=application.id,
         title=payload.title,
         detail=payload.detail,
         category=payload.category,
         due_at=payload.due_at,
         order_index=order,
     )
-    db.add(task)
+    application.tasks.append(task)
     db.flush()
     return TaskRead.model_validate(task)
 
@@ -350,8 +349,10 @@ def _create_tasks(db, application: Application, job: Job, resume, missing: list[
     start = max((t.order_index for t in application.tasks), default=-1) + 1
     created = []
     for offset, item in enumerate(generated):
+        # Se añade por la relación, no por la FK: si se asigna `application_id`
+        # a pelo, la colección `application.tasks` ya cargada no se entera y la
+        # respuesta sale sin tareas.
         task = Task(
-            application_id=application.id,
             title=item.title,
             detail=item.detail,
             category=item.category,
@@ -362,7 +363,7 @@ def _create_tasks(db, application: Application, job: Job, resume, missing: list[
             ),
             order_index=start + offset,
         )
-        db.add(task)
+        application.tasks.append(task)
         created.append(task)
     db.flush()
     return created
@@ -377,9 +378,8 @@ def _auto_followups(db, application: Application, new_status: ApplicationStatus)
     for days, label in ((7, "Follow-up a los 5 días hábiles"), (14, "Follow-up a los 10 días hábiles")):
         if label in existing:
             continue
-        db.add(
+        application.tasks.append(
             Task(
-                application_id=application.id,
                 title=label,
                 detail="Correo breve reiterando interés, con un dato nuevo sobre tu perfil.",
                 category="follow_up",

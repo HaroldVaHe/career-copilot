@@ -7,7 +7,7 @@
 ```mermaid
 graph TD
     FE["Frontend<br/>Next.js 16 · React 19 · Tailwind 4"]
-    EXT["Extensión de navegador<br/>(aún no implementada)"]
+    EXT["Extensión de navegador<br/>Manifest V3 · extension/"]
     API["FastAPI<br/>/api/v1"]
     SVC["Capa de servicios<br/>backend/app/services"]
     PG[("Postgres 16<br/>+ pgvector + pg_trgm")]
@@ -114,7 +114,26 @@ scraping en sus términos y banean cuentas. La extensión lee la página que el
 usuario **ya tiene abierta en su propia sesión** y la envía a `/api/v1/capture`.
 Las fuentes de `services/sources/` son solo las que ofrecen API pública sin key.
 
+La extensión vive en `extension/` (Manifest V3): un `popup` para capturar y ver
+el match, `extractors.js` con un extractor por portal, y `autofill.js` para
+rellenar formularios. Sus `host_permissions` apuntan solo a `localhost:8000`.
+
 Detalle en [ADR 0004](adr/0004-extension-en-vez-de-scraping.md).
+
+## Frontend
+
+Next.js con App Router. `src/lib/api.ts` es el único punto que habla con el
+backend y `src/lib/types.ts` refleja los esquemas Pydantic, así que un cambio de
+contrato se ve en un solo sitio.
+
+| Ruta | Pantalla |
+|---|---|
+| `/` | Panel |
+| `/cv` | Mi CV: subida, informe ATS, diff de tailoring |
+| `/vacantes` · `/vacantes/[id]` | Listado con filtros · dossier e intel |
+| `/pipeline` | Kanban de postulaciones |
+| `/entrevistas` | Simulacro y banco de respuestas |
+| `/ajustes` | Preferencias de búsqueda |
 
 ## Notas relacionadas
 

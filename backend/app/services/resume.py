@@ -143,7 +143,16 @@ def heuristic_resume(raw_text: str) -> ResumeData:
 
     detected = extract_skills(raw_text)
     data.skills = _bucket_skills(list(detected.keys()))
-    data.detected_seniority = detect_seniority(raw_text)
+
+    # Sin experiencia estructurada no hay fechas que sumar, pero casi todos los CV
+    # dicen los años en el resumen ("5 años construyendo APIs").
+    years = re.search(r"(\d{1,2})\s*\+?\s*(?:años|anos|years|yrs)", raw_text, re.I)
+    if years:
+        data.total_years_experience = float(years.group(1))
+
+    data.detected_seniority = detect_seniority(raw_text) or years_to_seniority(
+        data.total_years_experience
+    )
     return data
 
 

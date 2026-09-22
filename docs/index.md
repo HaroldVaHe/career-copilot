@@ -25,19 +25,20 @@ cada oferta, investiga la empresa y te entrena para la entrevista.
 
 ## Estado
 
-Backend funcional con los seis módulos enrutados. El frontend ya tiene sus
-cimientos — cliente de API tipado (`src/lib/`), kit de componentes, gráficos y
-navegación — pero todavía no hay pantallas por módulo. La extensión de navegador
-no existe aún: el backend ya expone su contrato en `/api/v1/capture`.
+Los seis módulos están completos de punta a punta: backend, pantalla y —donde
+aplica— extensión de navegador. 55 tests pasan sobre la parte determinista
+(taxonomía y scoring). Lo que queda es pulido y cobertura, no piezas ausentes.
 
 | Módulo | Backend | Pantalla |
 |---|---|---|
-| 1 — CV: parsing, ATS, tailoring | Listo | Pendiente |
-| 2 — Vacantes: ingesta, matching | Listo | Pendiente |
-| 3 — Extensión: captura, autofill | Contrato listo | Extensión sin empezar |
-| 4 — Postulaciones: Kanban, tareas | Listo | Pendiente |
-| 5 — Inteligencia: empresa, salario | Listo | Pendiente |
-| 6 — Entrevistas: simulacro, banco QA | Listo | Pendiente |
+| 1 — CV: parsing, ATS, tailoring | Listo | `/cv` — Mi CV |
+| 2 — Vacantes: ingesta, matching | Listo | `/vacantes`, `/vacantes/[id]` |
+| 3 — Extensión: captura, autofill | Listo | `extension/` (Manifest V3) |
+| 4 — Postulaciones: Kanban, tareas | Listo | `/pipeline` |
+| 5 — Inteligencia: empresa, salario | Listo | dentro de `/vacantes/[id]` |
+| 6 — Entrevistas: simulacro, banco QA | Listo | `/entrevistas` |
+
+Más `/` (Panel) y `/ajustes` (preferencias de búsqueda).
 
 ## Pendientes conocidos
 
@@ -47,5 +48,8 @@ Cosas detectadas y aún no resueltas. Cuando una se cierre, se borra de aquí.
   `claude-haiku-4-5-20251001`. Conviene fijarlo para que la versión no se mueva sola.
 - No hay migraciones: el esquema se crea con `Base.metadata.create_all`. Ver
   [ADR 0003](adr/0003-sin-migraciones.md) para cuándo dejaría de valer.
-- `backend/tests/` existe pero está vacío, y `backend/smoke_tmp.py` es un script
-  de prueba manual que debería moverse allí o borrarse.
+- Los tests cubren solo lo determinista (`test_taxonomy.py`, `test_scoring.py`).
+  Las rutas que tocan BD están tras el marcador `needs_db` y no hay tests de los
+  servicios que llaman al LLM.
+- `backend/smoke_tmp.py` y `backend/ingest_tmp.py` son scripts de prueba manual
+  en la raíz de `backend/`. Se dejan a propósito por ahora.

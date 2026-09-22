@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Career Copilot",
+  "version": "1.0.0",
+  "description": "Captura ofertas de empleo, calcula el match con tu CV y rellena formularios de postulación.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://localhost:8000/*", "http://127.0.0.1:8000/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Career Copilot"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "icons": {
+    "128": "icon128.png"
+  }
+}

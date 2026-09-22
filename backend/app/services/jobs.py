@@ -64,7 +64,8 @@ def analyze_job_text(text: str, title: str = "", company: str = "") -> JobNormal
 
 _SALARY_RE = re.compile(
     r"(?P<cur>[$€£]|usd|eur|cop|mxn|ars|clp)?\s*(?P<low>\d{1,3}(?:[.,]\d{3})+|\d{2,7})"
-    r"\s*(?:-|–|a|to|hasta)\s*(?P<cur2>[$€£])?\s*(?P<high>\d{1,3}(?:[.,]\d{3})+|\d{2,7})",
+    r"\s*(?:-|–|a|to|hasta)\s*(?P<cur2>[$€£])?\s*(?P<high>\d{1,3}(?:[.,]\d{3})+|\d{2,7})"
+    r"\s*(?P<cur3>[$€£]|usd|eur|cop|mxn|ars|clp)?",
     re.IGNORECASE,
 )
 
@@ -98,7 +99,10 @@ def heuristic_job(text: str, title: str = "", company: str = "") -> JobNormalize
     if match:
         salary_min = _to_number(match.group("low"))
         salary_max = _to_number(match.group("high"))
-        currency = (match.group("cur") or match.group("cur2") or "").upper().replace("$", "USD")
+        # La moneda puede ir delante del primer número, entre ambos o detrás.
+        currency = (
+            match.group("cur") or match.group("cur2") or match.group("cur3") or ""
+        ).upper().replace("$", "USD").replace("€", "EUR").replace("£", "GBP")
 
     years = 0.0
     years_match = re.search(r"(\d+)\s*\+?\s*(años|years|yrs)", lowered)

@@ -36,7 +36,8 @@ Dos vías separadas, y ninguna scrapea esos portales:
 - Hay que construir y mantener una extensión, con su propio ciclo de publicación.
 - CORS debe aceptar `chrome-extension://*` y `moz-extension://*` por regex,
   porque el id no se conoce de antemano (`main.py`).
-- **La extensión todavía no existe.** El contrato del backend sí está listo.
+- Cada portal necesita su propio extractor en `extension/extractors.js`, y un
+  rediseño de su HTML lo rompe. Es mantenimiento recurrente y asumido.
 
 ## Relacionado
 

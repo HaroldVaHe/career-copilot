@@ -1,0 +1,290 @@
+/* Mismos tokens que el dashboard: la extensión y la app deben leerse como una
+   sola cosa. Modo claro y oscuro con pasos propios para cada superficie. */
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --surface-2: #f2f2ee;
+  --ink: #0b0b0b;
+  --ink-secondary: #52514e;
+  --ink-muted: #898781;
+  --border: rgba(11, 11, 11, 0.1);
+  --accent: #2a78d6;
+  --track: #e1e0d9;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --surface-2: #232321;
+    --ink: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
+    --border: rgba(255, 255, 255, 0.1);
+    --accent: #3987e5;
+    --track: #2c2c2a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 360px;
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  background: var(--surface-1);
+  color: var(--ink);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  margin: 0;
+  font-weight: 600;
+}
+
+.status {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.status.ok::before,
+.status.bad::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.status.ok::before {
+  background: var(--good);
+}
+.status.bad::before {
+  background: var(--critical);
+}
+
+main {
+  padding: 12px 14px;
+}
+
+hr {
+  margin: 14px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.btn {
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  background: var(--surface-1);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+.btn.block {
+  display: block;
+  width: 100%;
+}
+
+.link {
+  border: none;
+  background: none;
+  color: var(--ink-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+}
+.link:hover {
+  color: var(--ink);
+}
+
+.panel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.field {
+  display: block;
+  margin-bottom: 8px;
+}
+.field span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--ink-secondary);
+}
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.job-title {
+  margin: 0;
+  font-weight: 600;
+}
+.job-company {
+  margin: 2px 0 0;
+  color: var(--ink-secondary);
+}
+
+.score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.ring {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+}
+.ring svg {
+  transform: rotate(-90deg);
+}
+.ring-track {
+  fill: none;
+  stroke: var(--track);
+  stroke-width: 5;
+}
+.ring-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 138.2;
+  stroke-dashoffset: 138.2;
+  transition: stroke-dashoffset 500ms;
+}
+.ring-value {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.score-detail .label {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-secondary);
+}
+
+.skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+.chip {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--surface-1);
+  font-size: 11px;
+  color: var(--ink-secondary);
+}
+.chip.have {
+  box-shadow: inset 2px 0 0 var(--good);
+}
+.chip.missing {
+  box-shadow: inset 2px 0 0 var(--critical);
+}
+
+.row {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+.row .btn {
+  flex: 1;
+}
+
+.answer {
+  margin-top: 10px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--surface-1);
+}
+.answer p {
+  margin: 0 0 6px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.muted {
+  color: var(--ink-muted);
+}
+.small {
+  font-size: 11px;
+}
+
+.error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--critical);
+  color: var(--ink-secondary);
+}
+
+.hidden {
+  display: none;
+}
+
+.foot {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+.foot p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-secondary);
+}

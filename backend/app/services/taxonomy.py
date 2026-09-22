@@ -185,16 +185,31 @@ def _soft_index() -> dict[str, str]:
 
 @lru_cache(maxsize=1)
 def _compiled_patterns() -> list[tuple[re.Pattern[str], str]]:
-    """Un regex por alias, ordenado de más largo a más corto para que
-    'react native' gane sobre 'react'."""
-    items = sorted(_alias_index().items(), key=lambda kv: -len(kv[0]))
+    """Un regex por alias, ordenados de más largo a más corto.
+
+    El orden importa: al escanear se marcan las posiciones ya atribuidas, así
+    que 'react native' se lleva el texto antes de que 'react' pueda mirarlo.
+    """
+    items = sorted(_alias_index().items(), key=lambda kv: (-len(kv[0]), kv[0]))
     patterns = []
     for alias, canonical in items:
-        # \b no funciona con '+'/'#' al final (C++, C#): se ancla con lookahead.
-        escaped = re.escape(alias)
-        left = r"(?<![\w+#.])"
-        right = r"(?![\w+#])" if alias[-1] in "+#" else r"(?![\w.+#])"
-        patterns.append((re.compile(left + escaped + right, re.IGNORECASE), canonical))
+        # Los límites excluyen \w, '+' y '#' (para C++/C#) pero NO el punto:
+        # si lo excluyeran, 'ASP.NET.' al final de una frase no encajaría.
+        boundary = r"(?<![\w+#]){}(?![\w+#])"
+
+        if len(alias) <= 2:
+            # Siglas como 'js', 'ui', 'go' o 'r' generarían ruido en prosa
+            # ("go to the store", "la r de recursión"), así que se exigen en la
+            # forma en que realmente se escriben en un CV: mayúsculas o canónica.
+            forms = {alias.upper()}
+            if len(canonical) <= 3:
+                forms.add(canonical)
+            body = "|".join(re.escape(f) for f in sorted(forms, key=len, reverse=True))
+            patterns.append((re.compile(boundary.format(f"(?:{body})")), canonical))
+        else:
+            patterns.append(
+                (re.compile(boundary.format(re.escape(alias)), re.IGNORECASE), canonical)
+            )
     return patterns
 
 
@@ -225,14 +240,25 @@ def canonicalize(term: str) -> str:
 
 
 def extract_skills(text: str) -> dict[str, int]:
-    """Skill canónica -> nº de menciones en el texto."""
+    """Skill canónica -> nº de menciones en el texto.
+
+    Cada tramo del texto se cuenta una sola vez: una mención de 'React Native'
+    no es también una mención de 'React'.
+    """
     if not text:
         return {}
+
+    claimed = bytearray(len(text))
     counts: dict[str, int] = {}
+
     for pattern, canonical in _compiled_patterns():
-        found = len(pattern.findall(text))
-        if found:
-            counts[canonical] = counts.get(canonical, 0) + found
+        for match in pattern.finditer(text):
+            start, end = match.span()
+            if any(claimed[start:end]):
+                continue
+            claimed[start:end] = b"" * (end - start)
+            counts[canonical] = counts.get(canonical, 0) + 1
+
     return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
 

@@ -15,7 +15,7 @@ salvo las llamadas a la API de Claude.
 | Datos | Postgres 16 + pgvector + pg_trgm · Redis 7 |
 | IA | Claude (Anthropic) · embeddings locales o Voyage |
 | Frontend | Next.js 16 · React 19 · Tailwind 4 |
-| Extensión | Pendiente — contrato en `/api/v1/capture` |
+| Extensión | Chrome Manifest V3 (`extension/`, sin empaquetar) |
 
 ## Arranque rápido
 
@@ -36,12 +36,16 @@ variables de entorno en [docs/desarrollo.md](docs/desarrollo.md).
 
 ## Módulos
 
-1. **CV** — parsing a JSON, auditoría ATS 0-100, tailoring con diff, versionado.
-2. **Vacantes** — ingesta de fuentes públicas, filtros y matching semántico.
-3. **Extensión** — captura de ofertas desde el navegador y autofill.
-4. **Postulaciones** — Kanban, checklist generado por IA, timeline, cover letters.
-5. **Inteligencia** — empresa, proceso de entrevista y benchmark salarial.
-6. **Entrevistas** — simulacro con feedback y banco de respuestas reutilizables.
+Los seis están completos de punta a punta (backend + pantalla):
+
+1. **CV** — parsing a JSON, auditoría ATS 0-100, tailoring con diff, versionado. → `/cv`
+2. **Vacantes** — ingesta de fuentes públicas, filtros y matching semántico. → `/vacantes`
+3. **Extensión** — captura de ofertas desde el navegador y autofill. → `extension/`
+4. **Postulaciones** — Kanban, checklist generado por IA, timeline, cover letters. → `/pipeline`
+5. **Inteligencia** — empresa, proceso de entrevista y benchmark salarial. → dossier de la vacante
+6. **Entrevistas** — simulacro con feedback y banco de respuestas reutilizables. → `/entrevistas`
+
+55 tests pasando sobre la parte determinista (taxonomía y scoring).
 
 ## Documentación
 
@@ -72,7 +76,11 @@ career-copilot/
 │   ├── models/         # SQLAlchemy
 │   ├── schemas/        # Pydantic: contrato de API y de LLM
 │   └── db/             # Sesión e inicialización
-├── frontend/           # Next.js
+├── frontend/src/
+│   ├── app/            # App Router: panel, cv, vacantes, pipeline, entrevistas
+│   ├── components/     # Kit de UI, gráficos, nav, diff
+│   └── lib/            # Cliente de API tipado y tipos espejo de Pydantic
+├── extension/          # Chrome Manifest V3: popup, extractores, autofill
 ├── infra/db/           # init.sql (extensiones)
 └── docs/               # Vault de Obsidian
 ```

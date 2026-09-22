@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Career Copilot</title>
+  </head>
+  <body>
+    <header class="head">
+      <div>
+        <p class="brand">Career Copilot</p>
+        <p class="status" id="status">Conectando…</p>
+      </div>
+      <button class="link" id="settings-toggle" title="Ajustes">⚙</button>
+    </header>
+
+    <section class="panel hidden" id="settings">
+      <label class="field">
+        <span>URL de la API</span>
+        <input id="api-url" type="url" placeholder="http://localhost:8000" />
+      </label>
+      <button class="btn" id="save-settings">Guardar</button>
+    </section>
+
+    <main id="main">
+      <button class="btn primary block" id="capture">Capturar esta oferta</button>
+
+      <div class="panel hidden" id="result">
+        <p class="job-title" id="job-title"></p>
+        <p class="job-company" id="job-company"></p>
+
+        <div class="score hidden" id="score-box">
+          <div class="ring">
+            <svg width="52" height="52" viewBox="0 0 52 52" aria-hidden="true">
+              <circle cx="26" cy="26" r="22" class="ring-track" />
+              <circle cx="26" cy="26" r="22" class="ring-fill" id="ring-fill" />
+            </svg>
+            <span class="ring-value" id="score-value">–</span>
+          </div>
+          <div class="score-detail">
+            <p class="label">Compatibilidad con tu CV</p>
+            <p class="muted" id="score-detail"></p>
+          </div>
+        </div>
+
+        <div class="skills" id="skills"></div>
+
+        <div class="row">
+          <button class="btn" id="save-pipeline">Guardar en el pipeline</button>
+          <button class="btn" id="open-app">Abrir dossier</button>
+        </div>
+      </div>
+
+      <hr />
+
+      <button class="btn block" id="autofill">Rellenar este formulario</button>
+      <p class="muted small" id="autofill-result"></p>
+
+      <details class="panel">
+        <summary>Responder una pregunta abierta</summary>
+        <label class="field">
+          <span>Pregunta del formulario</span>
+          <textarea id="question" rows="2" placeholder="¿Por qué quieres trabajar aquí?"></textarea>
+        </label>
+        <button class="btn" id="answer">Redactar respuesta</button>
+        <div class="answer hidden" id="answer-box">
+          <p id="answer-text"></p>
+          <button class="link" id="copy-answer">Copiar</button>
+        </div>
+      </details>
+
+      <p class="error hidden" id="error"></p>
+    </main>
+
+    <footer class="foot">
+      <p class="muted small">
+        Lee la página que ya tienes abierta. No envía formularios: el submit siempre lo pulsas tú.
+      </p>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

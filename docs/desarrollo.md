@@ -43,6 +43,29 @@ npm run dev
 No hay paso de migración: `app/db/init_db.py` crea extensiones, tablas y el
 usuario local en el arranque de la API.
 
+## Extensión de navegador
+
+No está publicada: se carga sin empaquetar.
+
+1. `chrome://extensions` → activa **Modo de desarrollador**.
+2. **Cargar descomprimida** → selecciona la carpeta `extension/`.
+3. Con la API levantada, abre una oferta y pulsa el icono.
+
+Sus `host_permissions` apuntan solo a `localhost:8000`, así que si cambias
+`API_PORT` hay que actualizar `extension/manifest.json`.
+
+## Tests
+
+```bash
+cd backend
+.venv/Scripts/python -m pytest -q     # Windows
+# .venv/bin/python -m pytest -q       # macOS / Linux
+```
+
+55 tests, todos sobre la parte determinista (taxonomía y scoring). Los que
+necesitan Postgres están tras el marcador `needs_db` de `tests/conftest.py` y se
+saltan solos si la base no está arriba — así la suite corre sin Docker.
+
 ## Variables de entorno
 
 Referencia completa y comentada en `.env.example`. Las que más se tocan:
