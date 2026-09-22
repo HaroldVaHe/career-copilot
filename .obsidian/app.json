@@ -1,0 +1,13 @@
+{
+  "useMarkdownLinks": true,
+  "newLinkFormat": "relative",
+  "alwaysUpdateLinks": true,
+  "attachmentFolderPath": "docs/assets",
+  "showUnsupportedFiles": false,
+  "userIgnoreFilters": [
+    "backend/.venv/",
+    "frontend/node_modules/",
+    "frontend/.next/",
+    "backend/storage/"
+  ]
+}

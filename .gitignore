@@ -1,0 +1,44 @@
+# --- Secrets ---
+.env
+.env.local
+*.pem
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# --- Node ---
+node_modules/
+.next/
+out/
+.turbo/
+npm-debug.log*
+yarn-error.log*
+
+# --- Data / uploads ---
+backend/storage/
+*.sqlite3
+*.db
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Obsidian ---
+# Se versiona la config compartida (.obsidian/app.json, core-plugins.json,
+# templates.json) para que el vault se abra igual en cualquier clon.
+# Se ignora el estado local de cada máquina.
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.obsidian/plugins/
+.obsidian/.trash/
+.trash/

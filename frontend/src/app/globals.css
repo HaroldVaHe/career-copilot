@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Tokens. Los valores de data-viz salen de la paleta de referencia validada:
+   ramp azul secuencial/ordinal, cuatro colores de estado reservados y tinta
+   en tokens de texto (una etiqueta nunca lleva el color de la serie).
+   El modo oscuro son pasos propios para su superficie, no un volteo automático.
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  --plane: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --surface-2: #f2f2ee;
+
+  --ink: #0b0b0b;
+  --ink-secondary: #52514e;
+  --ink-muted: #898781;
+
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+
+  --accent: #2a78d6;
+  --accent-soft: #cde2fb;
+  --accent-ink: #1c5cab;
+
+  /* Estado: fijo, nunca tematizado. Siempre con icono + etiqueta. */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --success-text: #006300;
+
+  /* Rampa ordinal del embudo (5 etapas), validada sobre la superficie clara. */
+  --stage-1: #86b6ef;
+  --stage-2: #5598e7;
+  --stage-3: #2a78d6;
+  --stage-4: #1c5cab;
+  --stage-5: #104281;
+
+  /* Pista de los medidores: paso más claro de la misma rampa. */
+  --track: #e1e0d9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --plane: #0d0d0d;
+    --surface-1: #1a1a19;
+    --surface-2: #232321;
+
+    --ink: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
+
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+
+    --accent: #3987e5;
+    --accent-soft: #184f95;
+    --accent-ink: #86b6ef;
+
+    --success-text: #0ca30c;
+
+    --stage-1: #9ec5f4;
+    --stage-2: #6da7ec;
+    --stage-3: #3987e5;
+    --stage-4: #256abf;
+    --stage-5: #184f95;
+
+    --track: #2c2c2a;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --plane: #0d0d0d;
+  --surface-1: #1a1a19;
+  --surface-2: #232321;
+
+  --ink: #ffffff;
+  --ink-secondary: #c3c2b7;
+  --ink-muted: #898781;
+
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+
+  --accent: #3987e5;
+  --accent-soft: #184f95;
+  --accent-ink: #86b6ef;
+
+  --success-text: #0ca30c;
+
+  --stage-1: #9ec5f4;
+  --stage-2: #6da7ec;
+  --stage-3: #3987e5;
+  --stage-4: #256abf;
+  --stage-5: #184f95;
+
+  --track: #2c2c2a;
+}
+
+@theme inline {
+  --color-plane: var(--plane);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+  --color-hairline: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --color-track: var(--track);
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--plane);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Las cifras grandes usan figuras proporcionales; tabulares solo en columnas. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--axis);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media print, (forced-colors: active) {
+  /* El color deja de ser fiable: la textura y las etiquetas cargan la identidad. */
+  .meter-fill {
+    background-image: repeating-linear-gradient(
+      45deg,
+      currentColor 0 2px,
+      transparent 2px 5px
+    );
+  }
+}

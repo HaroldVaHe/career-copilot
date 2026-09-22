@@ -1,0 +1,40 @@
+# Postgres + pgvector y Redis para desarrollo local.
+#   docker compose up -d
+# Los puertos están desplazados (5433/6380) para no chocar con instalaciones locales.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: copilot-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: copilot
+      POSTGRES_PASSWORD: copilot
+      POSTGRES_DB: career_copilot
+    ports:
+      - "5433:5432"
+    volumes:
+      - copilot-pgdata:/var/lib/postgresql/data
+      - ./infra/db/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copilot -d career_copilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: copilot-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - copilot-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  copilot-pgdata:
+  copilot-redisdata:
