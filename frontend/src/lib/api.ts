@@ -12,16 +12,21 @@ import type {
   InterviewSummary,
   Job,
   JobBrief,
+  IngestResponse,
   MatchAnalysis,
   MatchResult,
+  Profile,
   QAEntry,
   Resume,
   ResumeSummary,
   SalaryBenchmark,
+  SearchPlan,
   SearchResponse,
+  SourceInfo,
   TailorResponse,
   Task,
 } from "./types";
+import { getActiveProfileId, switchProfile } from "./profile";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const API = `${BASE}/api/v1`;
@@ -41,28 +46,45 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API}${path}`, {
+async function send(path: string, init?: RequestInit): Promise<Response> {
+  const profileId = getActiveProfileId();
+  const doFetch = () =>
+    fetch(`${API}${path}`, {
       ...init,
       headers: {
         ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        ...(profileId ? { "X-Profile-Id": String(profileId) } : {}),
         ...init?.headers,
       },
       cache: "no-store",
     });
-  } catch {
-    throw new ApiError(
-      `No se pudo conectar con la API en ${BASE}. ¿Está arrancado el backend?`,
-      0,
-    );
+
+  let res: Response;
+  try {
+    res = await doFetch();
+  } catch (error) {
+    if (init?.signal?.aborted) throw error;
+    // Un GET no cambia nada: si la red lo corta (pasa con varias peticiones a la vez
+    // mientras la API está ocupada), se reintenta una vez antes de dar error.
+    const method = (init?.method ?? "GET").toUpperCase();
+    try {
+      if (method !== "GET") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      res = await doFetch();
+    } catch {
+      throw new ApiError(
+        `No se pudo conectar con la API en ${BASE}. ¿Está arrancado el backend?`,
+        0,
+      );
+    }
   }
 
-  if (res.status === 204) return undefined as T;
-
-  const payload = await res.json().catch(() => null);
   if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    // El perfil guardado ya no existe (se borró): vuelve al perfil por defecto.
+    if (payload?.code === "profile_not_found" && profileId) {
+      switchProfile(null);
+    }
     const detail =
       (payload && (payload.detail ?? payload.message)) || `Error ${res.status}`;
     throw new ApiError(
@@ -71,7 +93,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       payload?.code,
     );
   }
-  return payload as T;
+  return res;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await send(path, init);
+  if (res.status === 204) return undefined as T;
+  return (await res.json().catch(() => null)) as T;
 }
 
 const qs = (params: Record<string, unknown>) => {
@@ -95,14 +123,38 @@ export interface JobSearchQuery {
   required_skills?: string[];
   posted_within_days?: number;
   source?: string[];
+  country?: string;
   semantic?: string;
   limit?: number;
   offset?: number;
   sort?: "score" | "date" | "salary";
 }
 
+export interface IngestRequest {
+  sources?: string[];
+  query?: string;
+  queries?: string[];
+  country?: string;
+  resume_id?: number;
+  remember?: boolean;
+  limit?: number;
+  analyze?: boolean;
+}
+
 export const api = {
   health: () => request<Health>("/health"),
+
+  // --- Perfiles ---
+  listProfiles: () => request<Profile[]>("/profiles"),
+  currentProfile: () => request<Profile>("/profiles/current"),
+  createProfile: (full_name: string) =>
+    request<Profile>("/profiles", { method: "POST", body: JSON.stringify({ full_name }) }),
+  renameProfile: (id: number, full_name: string) =>
+    request<Profile>(`/profiles/${id}`, { method: "PATCH", body: JSON.stringify({ full_name }) }),
+  deleteProfile: (id: number) => request<void>(`/profiles/${id}`, { method: "DELETE" }),
+  splitResumeToProfile: (resumeId: number) =>
+    request<Profile>(`/profiles/from-resume/${resumeId}`, { method: "POST" }),
+
   stats: () =>
     request<{
       resumes: number;
@@ -127,6 +179,7 @@ export const api = {
   deleteResume: (id: number) => request<void>(`/resumes/${id}`, { method: "DELETE" }),
   reaudit: (id: number, useLlm = true) =>
     request<AtsReport>(`/resumes/${id}/audit${qs({ use_llm: useLlm })}`, { method: "POST" }),
+  resumeReport: async (id: number) => (await send(`/resumes/${id}/report.pdf`)).blob(),
   tailor: (body: {
     resume_id: number;
     job_id?: number;
@@ -138,16 +191,17 @@ export const api = {
     request<Resume>("/resumes/variants", { method: "POST", body: JSON.stringify(body) }),
 
   // --- Vacantes ---
-  sources: () => request<{ sources: string[]; note: string }>("/jobs/sources"),
-  ingest: (body: { sources?: string[]; query?: string; limit?: number; analyze?: boolean }) =>
-    request<{ results: { source: string; fetched?: number; created?: number; error?: string }[] }>(
-      "/jobs/ingest",
-      { method: "POST", body: JSON.stringify(body) },
-    ),
-  searchJobs: (body: JobSearchQuery, resumeId?: number) =>
+  sources: () =>
+    request<{ sources: string[]; details: SourceInfo[]; note: string }>("/jobs/sources"),
+  searchPlan: (resumeId?: number, refresh = false) =>
+    request<SearchPlan>(`/jobs/search-plan${qs({ resume_id: resumeId, refresh: refresh || undefined })}`),
+  ingest: (body: IngestRequest) =>
+    request<IngestResponse>("/jobs/ingest", { method: "POST", body: JSON.stringify(body) }),
+  searchJobs: (body: JobSearchQuery, resumeId?: number, signal?: AbortSignal) =>
     request<SearchResponse>(`/jobs/search${qs({ resume_id: resumeId })}`, {
       method: "POST",
       body: JSON.stringify(body),
+      signal,
     }),
   createJob: (body: Record<string, unknown>) =>
     request<Job>("/jobs", { method: "POST", body: JSON.stringify(body) }),

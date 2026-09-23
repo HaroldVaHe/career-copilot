@@ -22,7 +22,7 @@ python -m venv .venv
 .venv\Scripts\activate            # Windows
 # source .venv/bin/activate       # macOS / Linux
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --reload-dir app --timeout-graceful-shutdown 3 --port 8000
 
 # 4. Frontend (otra terminal)
 cd frontend
@@ -41,7 +41,21 @@ npm run dev
 | Redis | `localhost:6380` |
 
 No hay paso de migración: `app/db/init_db.py` crea extensiones, tablas y el
-usuario local en el arranque de la API.
+perfil por defecto en el arranque de la API.
+
+### Si `--reload` no recoge los cambios
+
+Pasó en Windows con el repo en otra unidad (`F:`). Tres causas, tres flags:
+
+| Síntoma | Causa | Arreglo |
+|---|---|---|
+| Recarga al instalar paquetes y se cuelga | Vigila también `.venv/` | `--reload-dir app` |
+| Detecta el cambio pero sigue sirviendo el código viejo | El proceso viejo espera a que el navegador suelte sus conexiones keep-alive | `--timeout-graceful-shutdown 3` |
+| No detecta nada | Los eventos del sistema de archivos no llegan | `$env:WATCHFILES_FORCE_POLLING="true"` antes de arrancar |
+
+Si el puerto 8000 sigue ocupado tras matar uvicorn, queda un hijo de
+`multiprocessing` con el socket heredado: búscalo con
+`Get-CimInstance Win32_Process -Filter "Name='python.exe'"` y mátalo.
 
 ## Extensión de navegador
 
@@ -54,6 +68,10 @@ No está publicada: se carga sin empaquetar.
 Sus `host_permissions` apuntan solo a `localhost:8000`, así que si cambias
 `API_PORT` hay que actualizar `extension/manifest.json`.
 
+Tras actualizarla, pulsa **Recargar** en `chrome://extensions` (la versión sube
+en `manifest.json`). Con dos o más perfiles, el popup muestra un selector de
+perfil; se guarda en `chrome.storage.sync`, aparte del perfil activo del dashboard.
+
 ## Tests
 
 ```bash
@@ -62,9 +80,17 @@ cd backend
 # .venv/bin/python -m pytest -q       # macOS / Linux
 ```
 
-55 tests, todos sobre la parte determinista (taxonomía y scoring). Los que
-necesitan Postgres están tras el marcador `needs_db` de `tests/conftest.py` y se
-saltan solos si la base no está arriba — así la suite corre sin Docker.
+87 tests: taxonomía, scoring, matching, geografía de vacantes (`test_geo.py`),
+informe PDF y plan de búsqueda (`test_report_pdf.py`) y aislamiento de perfiles
+(`test_profiles.py`). Los que necesitan Postgres están tras el marcador
+`needs_db` de `tests/conftest.py` y se saltan solos si la base no está arriba -
+así la suite corre sin Docker. Los de perfiles crean y borran un perfil temporal.
+
+## Dependencias con motivo
+
+| Paquete | Para qué |
+|---|---|
+| `reportlab` | Informe PDF del CV. Python puro: sin GTK ni binarios del sistema, a diferencia de WeasyPrint |
 
 ## Variables de entorno
 
@@ -73,7 +99,7 @@ Referencia completa y comentada en `.env.example`. Las que más se tocan:
 | Variable | Default | Nota |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | vacío | Sin ella el sistema arranca en modo degradado |
-| `LLM_MODEL` | `claude-opus-5` | `claude-sonnet-5` si haces muchas llamadas |
+| `LLM_MODEL` | `claude-opus-5-5` | `claude-sonnet-5` si haces muchas llamadas |
 | `LLM_FAST_MODEL` | `claude-haiku-4-5` | Normalización de vacantes scrapeadas |
 | `LLM_EFFORT` | `high` | `low`…`max`: profundidad de razonamiento y costo |
 | `EMBEDDING_PROVIDER` | `local` | `local` \| `voyage` — ver [ADR 0002](adr/0002-embeddings.md) |

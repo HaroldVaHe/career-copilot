@@ -1,6 +1,7 @@
 # Career Copilot — contexto para Claude Code
 
-Herramienta local de búsqueda de empleo. Un solo usuario, sin autenticación,
+Herramienta local de búsqueda de empleo. Varios perfiles (uno por persona, elegido
+con la cabecera `X-Profile-Id`, ver ADR 0008), sin autenticación,
 todo en `localhost`. FastAPI + Postgres/pgvector + Claude, frontend Next.js.
 
 Antes de trabajar, lee [docs/index.md](docs/index.md) y, si la tarea toca una
@@ -59,6 +60,10 @@ Si detectas algo desfasado o a medias que no toca arreglar ahora, anótalo en
   solo `POST /resumes/variants` persiste. Ver [ADR 0005](docs/adr/0005-tailoring-con-aprobacion.md).
 - **No añadas scraping** de LinkedIn, Indeed, Glassdoor, Workday, Greenhouse,
   Lever o Taleo. Esa vía es la extensión. Ver [ADR 0004](docs/adr/0004-extension-en-vez-de-scraping.md).
+- **Todo lo personal se filtra por el perfil activo.** Una ruta nueva que lea CV,
+  postulaciones, simulacros o respuestas debe depender de `CurrentUser` y filtrar
+  por `user.id`; si no, mezcla datos entre personas. `jobs` e intel son compartidos.
+  Ver [ADR 0008](docs/adr/0008-multiperfil.md).
 - **El sistema debe arrancar sin `ANTHROPIC_API_KEY`**, en modo degradado. No
   introduzcas dependencias duras del LLM en el camino de arranque.
 
@@ -66,7 +71,7 @@ Si detectas algo desfasado o a medias que no toca arreglar ahora, anótalo en
 
 ```bash
 docker compose up -d                                    # Postgres + Redis
-cd backend && uvicorn app.main:app --reload --port 8000 # API
+cd backend && uvicorn app.main:app --reload --reload-dir app --timeout-graceful-shutdown 3 --port 8000 # API
 cd frontend && npm run dev                              # Frontend
-cd backend && pytest                                    # Tests (aún vacíos)
+cd backend && pytest                                    # Tests (87)
 ```

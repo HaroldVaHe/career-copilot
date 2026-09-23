@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.models import Job
 from app.schemas.job import JobNormalized, JobRequirements, SkillRequirement
+from app.services import geo
 from app.services.embeddings import embed
 from app.services.llm import LLMError, llm
 from app.services.sources import REGISTRY, RawJob
@@ -235,26 +239,101 @@ def reanalyze(db: Session, job: Job) -> Job:
 
 
 def ingest_source(
-    db: Session, source_name: str, query: str = "", limit: int = 30, analyze: bool = False
+    db: Session,
+    source_name: str,
+    query: str = "",
+    limit: int = 30,
+    analyze: bool = False,
+    country: str = "",
 ) -> dict:
     """Descarga vacantes de una fuente y las guarda.
 
     `analyze=False` por defecto: normalizar 30 ofertas con el LLM cuesta dinero y
     tiempo. La heurística basta para poblar el listado; el análisis fino se hace
     cuando abres una vacante concreta.
+
+    Con `country`, se descartan las vacantes a las que no se puede postular desde
+    ese país (p. ej. "USA only" para alguien en Colombia). Las fuentes que ya
+    filtran en su API no se vuelven a filtrar.
     """
+    fetch = fetch_eligible(source_name, query, limit, country)
+    return {**fetch.summary(), **store(db, fetch.jobs, analyze)}
+
+
+@dataclass
+class FetchResult:
+    source: str
+    query: str
+    jobs: list[RawJob] = field(default_factory=list)
+    fetched: int = 0
+    skipped: int = 0
+    error: str = ""
+
+    def summary(self) -> dict:
+        out = {"source": self.source, "query": self.query, "fetched": self.fetched,
+               "skipped": self.skipped}
+        if self.error:
+            out["error"] = self.error
+        return out
+
+
+def fetch_eligible(source_name: str, query: str, limit: int, country: str = "") -> FetchResult:
+    """Solo red, sin base de datos: se puede llamar desde varios hilos a la vez."""
     source = REGISTRY.get(source_name)
     if source is None:
         raise ValueError(f"Fuente desconocida: {source_name}. Disponibles: {list(REGISTRY)}")
 
-    raws = source.fetch(query=query, limit=limit)
+    raws = source.fetch(query=query, limit=limit, country=country)
+    result = FetchResult(source=source_name, query=query, fetched=len(raws))
+    if country and not source.filters_country:
+        eligible = [r for r in raws if geo.location_matches(r.location, country)]
+        result.skipped = len(raws) - len(eligible)
+        raws = eligible
+    result.jobs = [r for r in raws if r.title][:limit]
+    return result
+
+
+def store(db: Session, raws: list[RawJob], analyze: bool = False) -> dict:
     created = updated = 0
     for raw in raws:
-        if not raw.title:
-            continue
         _, is_new = upsert_job(db, raw, analyze=analyze)
         created += is_new
         updated += not is_new
     db.commit()
+    return {"created": created, "updated": updated}
 
-    return {"source": source_name, "fetched": len(raws), "created": created, "updated": updated}
+
+def ingest_many(
+    db: Session,
+    sources: list[str],
+    queries: list[str],
+    limit: int,
+    country: str = "",
+    analyze: bool = False,
+) -> list[dict]:
+    """Cada consulta contra cada fuente. Descarga en paralelo, guarda en serie.
+
+    Una fuente caída no tumba el resto: su fila del resultado lleva `error`.
+    """
+    queries = queries or [""]
+    tasks = [(s, q) for s in sources for q in queries]
+
+    def _run(task: tuple[str, str]) -> FetchResult:
+        source_name, query = task
+        try:
+            return fetch_eligible(source_name, query, limit, country)
+        except httpx.HTTPError as exc:
+            return FetchResult(source_name, query, error=f"fallo de red: {exc}")
+        except Exception as exc:  # noqa: BLE001 — cualquier fallo de una fuente se reporta
+            return FetchResult(source_name, query, error=str(exc))
+
+    with ThreadPoolExecutor(max_workers=min(8, len(tasks))) as pool:
+        fetched = list(pool.map(_run, tasks))
+
+    results = []
+    for item in fetched:
+        row = item.summary()
+        if not item.error:
+            row.update(store(db, item.jobs, analyze))
+        results.append(row)
+    return results

@@ -5,15 +5,17 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import type { Health } from "@/lib/types";
+import { adoptProfileFromUrl, switchProfile } from "@/lib/profile";
+import type { Health, Profile } from "@/lib/types";
 import { cx } from "./ui";
 
 const LINKS = [
   { href: "/", label: "Panel", icon: "◆" },
-  { href: "/cv", label: "Mi CV", icon: "▤" },
+  { href: "/cv", label: "Mis CV", icon: "▤" },
   { href: "/vacantes", label: "Vacantes", icon: "◎" },
   { href: "/pipeline", label: "Pipeline", icon: "▦" },
   { href: "/entrevistas", label: "Entrevistas", icon: "◑" },
+  { href: "/perfiles", label: "Perfiles", icon: "◉" },
   { href: "/ajustes", label: "Ajustes", icon: "⚙" },
 ];
 
@@ -31,10 +33,12 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-dvh w-60 shrink-0 flex-col border-r bg-surface-1">
-      <div className="px-5 py-5">
+      <div className="px-5 pt-5 pb-4">
         <p className="text-sm font-semibold tracking-tight text-ink">Career Copilot</p>
         <p className="text-xs text-ink-muted">Postulación asistida</p>
       </div>
+
+      <ProfileSwitcher />
 
       <nav className="flex-1 space-y-0.5 px-3">
         {LINKS.map((link) => {
@@ -65,6 +69,62 @@ export function Sidebar() {
         <ThemeToggle />
       </div>
     </aside>
+  );
+}
+
+/** Cambia la persona activa: sus CV, pipeline, entrevistas y preferencias. */
+function ProfileSwitcher() {
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [activeId, setActiveId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (adoptProfileFromUrl()) return;
+    let cancelled = false;
+    Promise.all([api.listProfiles(), api.currentProfile()])
+      .then(([list, current]) => {
+        if (cancelled) return;
+        setProfiles(list);
+        setActiveId(current.id);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (profiles.length === 0) return null;
+  const active = profiles.find((p) => p.id === activeId);
+
+  return (
+    <div className="mx-3 mb-3 rounded-lg border bg-surface-2 px-3 py-2.5">
+      <label className="block">
+        <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+          Perfil activo
+        </span>
+        <select
+          value={activeId ?? ""}
+          onChange={(e) => {
+            const id = Number(e.target.value);
+            const target = profiles.find((p) => p.id === id);
+            // El por defecto no necesita cabecera: se borra para que la extensión y el
+            // frontend coincidan aunque no se haya elegido nada.
+            switchProfile(target?.is_default ? null : id);
+          }}
+          className="w-full truncate bg-transparent text-sm font-medium text-ink focus:outline-none"
+        >
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.full_name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {active?.headline && (
+        <p className="mt-0.5 truncate text-xs text-ink-secondary" title={active.headline}>
+          {active.headline}
+        </p>
+      )}
+    </div>
   );
 }
 

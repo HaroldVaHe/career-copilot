@@ -36,17 +36,27 @@ class RawJob:
 class JobSource(ABC):
     """Una fuente de vacantes.
 
-    Las tres implementadas usan APIs públicas y documentadas, sin scraping ni
+    Todas las implementadas usan APIs públicas y documentadas, sin scraping ni
     API key. Para LinkedIn/Indeed/Glassdoor — que prohíben el scraping en sus
     términos — la vía soportada es la extensión de navegador: capturas la oferta
     que ya estás viendo, en tu sesión, con un clic.
+
+    `country` es el nombre canónico en inglés (ver `services/geo.py`). Las
+    fuentes que filtran por país en su API lo usan; las demás lo ignoran y el
+    filtro se aplica después, al ingerir.
     """
 
     name: str = "base"
+    label: str = ""
+    description: str = ""
     requires_key: bool = False
+    # Si entra en la importación cuando el usuario no elige fuentes.
+    default_enabled: bool = True
+    # True si la API ya filtra por país y no hace falta volver a filtrar.
+    filters_country: bool = False
 
     @abstractmethod
-    def fetch(self, query: str = "", limit: int = 50) -> list[RawJob]:
+    def fetch(self, query: str = "", limit: int = 50, country: str = "") -> list[RawJob]:
         ...
 
     def _get(self, url: str, params: dict | None = None, timeout: float = 30.0) -> httpx.Response:

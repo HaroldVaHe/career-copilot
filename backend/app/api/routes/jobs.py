@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
@@ -18,12 +17,13 @@ from app.schemas.job import (
     JobSearchQuery,
     MatchAnalysis,
     MatchResult,
+    SearchPlan,
 )
+from app.services import geo, job_search, matching
 from app.services import jobs as job_service
-from app.services import matching
 from app.services.embeddings import embed
 from app.services.llm import LLMError, LLMUnavailable
-from app.services.sources import REGISTRY, RawJob, available_sources
+from app.services.sources import REGISTRY, RawJob, available_sources, default_sources
 
 router = APIRouter(prefix="/jobs", tags=["Vacantes"])
 
@@ -40,9 +40,22 @@ class SearchResponse(BaseModel):
 
 
 class IngestRequest(BaseModel):
-    sources: list[str] = Field(default_factory=lambda: list(REGISTRY))
+    sources: list[str] = Field(default_factory=default_sources)
     query: str = ""
-    limit: int = Field(default=30, ge=1, le=200)
+    queries: list[str] = Field(
+        default_factory=list, description="Varias consultas; se lanzan todas contra cada fuente"
+    )
+    country: str = Field(
+        default="", description="País de residencia: descarta vacantes no elegibles desde ahí"
+    )
+    resume_id: int | None = Field(
+        default=None,
+        description="Si no hay `query` ni `queries`, se usa el plan de búsqueda de este CV",
+    )
+    remember: bool = Field(
+        default=True, description="Guardar consultas y país como plan de ese CV para la próxima vez"
+    )
+    limit: int = Field(default=20, ge=1, le=100, description="Máximo por fuente y consulta")
     analyze: bool = Field(
         default=False,
         description="Normalizar cada vacante con Claude al importarla (más lento y con costo)",
@@ -54,15 +67,43 @@ def list_sources():
     """Fuentes de agregación disponibles."""
     return {
         "sources": available_sources(),
+        "details": [
+            {
+                "name": s.name,
+                "label": s.label or s.name,
+                "description": s.description,
+                "default": s.default_enabled,
+                "filters_country": s.filters_country,
+            }
+            for s in REGISTRY.values()
+        ],
         "note": "LinkedIn, Indeed y Glassdoor prohíben el scraping en sus términos. "
         "Para esos portales usa la extensión de navegador: captura la oferta que ya "
         "estás viendo en tu propia sesión.",
     }
 
 
+@router.get("/search-plan", response_model=SearchPlan)
+def search_plan(
+    db: DbSession,
+    user: CurrentUser,
+    resume_id: int | None = None,
+    refresh: bool = Query(False, description="Descarta el plan guardado y lo recalcula"),
+):
+    """Qué buscar para un CV: títulos de puesto en inglés y país de residencia."""
+    resume = resolve_resume(db, user, resume_id)
+    if refresh:
+        job_search.forget_plan(user, resume.id)
+        db.flush()
+    return job_search.build_plan(resume, user)
+
+
 @router.post("/ingest")
-def ingest(payload: IngestRequest, db: DbSession):
-    """Descarga vacantes de las fuentes públicas y las indexa."""
+def ingest(payload: IngestRequest, db: DbSession, user: CurrentUser):
+    """Descarga vacantes de las fuentes públicas y las indexa.
+
+    Sin consultas explícitas y con `resume_id`, busca según el CV (ver `/jobs/search-plan`).
+    """
     unknown = [s for s in payload.sources if s not in REGISTRY]
     if unknown:
         raise HTTPException(
@@ -70,18 +111,22 @@ def ingest(payload: IngestRequest, db: DbSession):
             f"Fuente(s) desconocida(s): {unknown}. Disponibles: {available_sources()}",
         )
 
-    results = []
-    for name in payload.sources:
-        try:
-            results.append(
-                job_service.ingest_source(db, name, payload.query, payload.limit, payload.analyze)
-            )
-        except httpx.HTTPError as exc:
-            results.append({"source": name, "error": f"fallo de red: {exc}"})
-        except Exception as exc:  # una fuente caída no debe tumbar el resto
-            results.append({"source": name, "error": str(exc)})
+    queries = [q.strip() for q in [*payload.queries, payload.query] if q and q.strip()]
+    country = geo.canonical(payload.country)
+    resume = None
+    if payload.resume_id is not None:
+        resume = resolve_resume(db, user, payload.resume_id)
+        if not queries:
+            plan = job_search.build_plan(resume, user)
+            queries, country = plan.queries, country or plan.country
+        elif payload.remember:
+            job_search.remember_plan(user, resume.id, queries, country)
+            db.commit()
 
-    return {"results": results}
+    results = job_service.ingest_many(
+        db, payload.sources, queries, payload.limit, country, payload.analyze
+    )
+    return {"results": results, "queries": queries, "country": country}
 
 
 @router.post("", response_model=JobRead, status_code=status.HTTP_201_CREATED)
@@ -138,6 +183,18 @@ def search(payload: JobSearchQuery, db: DbSession, user: CurrentUser, resume_id:
         stmt = stmt.where(Job.seniority.in_(payload.seniority))
     if payload.source:
         stmt = stmt.where(Job.source.in_(payload.source))
+    if payload.country and payload.country.strip():
+        # Mismo criterio que al importar: el país, su región, "worldwide" o sin ubicación.
+        patterns = geo.sql_patterns(payload.country)
+        stmt = stmt.where(
+            or_(
+                Job.location.is_(None),
+                func.trim(Job.location) == "",
+                func.lower(func.trim(Job.location)).in_(["remote", "remoto"]),
+                *[Job.location.ilike(p) for p in patterns],
+                *[Job.country.ilike(p) for p in patterns],
+            )
+        )
     if payload.salary_min:
         stmt = stmt.where(Job.salary_max >= payload.salary_min)
     if payload.posted_within_days:

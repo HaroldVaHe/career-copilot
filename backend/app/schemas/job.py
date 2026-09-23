@@ -120,6 +120,32 @@ class JobCreate(BaseModel):
     analyze: bool = Field(default=True, description="Extraer requisitos con Claude al guardar")
 
 
+class SearchTerms(BaseModel):
+    """Lo que Claude deduce de un CV para buscar vacantes en bolsas internacionales."""
+
+    queries: list[str] = Field(
+        default_factory=list,
+        description="2 a 4 títulos de puesto cortos EN INGLÉS (2-4 palabras) a los que esta "
+        "persona puede postular de verdad hoy, del más al menos probable. Ej. 'Graphic Designer', "
+        "'Junior Full Stack Developer'. Sin seniority inflado ni tecnologías sueltas.",
+    )
+    country: str = Field(
+        default="",
+        description="País de residencia en inglés, deducido de la ubicación ('Chía, "
+        "Cundinamarca' -> 'Colombia'). Vacío si no se puede deducir.",
+    )
+
+
+class SearchPlan(BaseModel):
+    """Qué buscar para un CV. El usuario lo ve y lo puede editar antes de importar."""
+
+    resume_id: int | None = None
+    queries: list[str] = Field(default_factory=list)
+    country: str = ""
+    region: str = ""
+    origin: str = Field(default="heuristic", description="ai | heuristic | saved")
+
+
 class JobSearchQuery(BaseModel):
     q: str | None = None
     min_score: float | None = Field(default=None, ge=0, le=100)
@@ -132,6 +158,11 @@ class JobSearchQuery(BaseModel):
     )
     posted_within_days: int | None = None
     source: list[str] | None = None
+    country: str | None = Field(
+        default=None,
+        description="País de residencia: solo vacantes a las que se puede postular desde ahí "
+        "(el país, su región o 'worldwide')",
+    )
     semantic: str | None = Field(
         default=None, description="Búsqueda por significado, no por palabra exacta"
     )

@@ -30,6 +30,8 @@ export default function CvPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = useState<"download" | "share" | null>(null);
   const [tailorOpen, setTailorOpen] = useState(false);
 
   const refreshList = useCallback(async () => {
@@ -115,6 +117,75 @@ export default function CvPage() {
     setSelectedId(list[0]?.id ?? null);
   };
 
+  const handleSplit = async (target: Resume) => {
+    const owner = target.parsed.contact.full_name || target.label;
+    const ok = confirm(
+      `¿Mover este CV a un perfil nuevo llamado «${owner}»?\n\n` +
+        "Se lleva sus versiones adaptadas, postulaciones y simulacros. Podrás cambiar de perfil desde la barra lateral.",
+    );
+    if (!ok) return;
+    try {
+      const profile = await api.splitResumeToProfile(target.id);
+      setNotice(`CV movido al perfil «${profile.full_name}». Cámbialo en la barra lateral para verlo.`);
+      const list = await refreshList();
+      setSelectedId(list[0]?.id ?? null);
+      if (list.length === 0) setResume(null);
+    } catch (e) {
+      setError((e as ApiError).message);
+    }
+  };
+
+  const reportFile = async (target: Resume) => {
+    const blob = await api.resumeReport(target.id);
+    return new File([blob], reportFileName(target), { type: "application/pdf" });
+  };
+
+  const handleDownload = async () => {
+    if (!resume) return;
+    setPdfBusy("download");
+    setError(null);
+    try {
+      downloadFile(await reportFile(resume));
+    } catch (e) {
+      setError((e as ApiError).message);
+    } finally {
+      setPdfBusy(null);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!resume) return;
+    setPdfBusy("share");
+    setError(null);
+    try {
+      const file = await reportFile(resume);
+      const owner = resume.parsed.contact.full_name || resume.label;
+      const score = resume.ats_report ? Math.round(resume.ats_report.overall_score) : null;
+      // El menú nativo de compartir (WhatsApp, correo, Teams…) solo existe en
+      // navegadores que aceptan archivos; en el resto se descarga para adjuntarlo.
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: `Informe de CV · ${owner}`,
+            text: score != null ? `Informe ATS del CV de ${owner}: ${score}/100.` : undefined,
+          });
+        } catch (e) {
+          if ((e as DOMException).name !== "AbortError") throw e;
+        }
+      } else {
+        downloadFile(file);
+        setNotice(
+          "Este navegador no permite compartir archivos directamente: se descargó el PDF para que lo adjuntes donde quieras.",
+        );
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setPdfBusy(null);
+    }
+  };
+
   const active = selectedId == null ? null : resume;
   const report = active?.ats_report ?? null;
   const keywords = report
@@ -126,11 +197,17 @@ export default function CvPage() {
   return (
     <>
       <PageHeader
-        title="Mi CV"
+        title="Mis CV"
         description="Estructura, auditoría ATS y adaptación por vacante. Nada se guarda sin que lo apruebes."
         actions={
           active && (
             <>
+              <Button onClick={handleDownload} loading={pdfBusy === "download"}>
+                Descargar PDF
+              </Button>
+              <Button onClick={handleShare} loading={pdfBusy === "share"}>
+                Compartir
+              </Button>
               <Button onClick={handleReaudit} loading={busy === "Re-auditando…"}>
                 Re-auditar
               </Button>
@@ -146,6 +223,13 @@ export default function CvPage() {
         <div className="mb-4">
           <Alert tone="critical" title="Algo falló">
             {error}
+          </Alert>
+        </div>
+      )}
+      {notice && (
+        <div className="mb-4">
+          <Alert tone="good" title="Listo">
+            {notice}
           </Alert>
         </div>
       )}
@@ -204,9 +288,16 @@ export default function CvPage() {
                   subtitle={active.target_role ? `Rol objetivo: ${active.target_role}` : undefined}
                   actions={
                     resumes.length > 1 && (
-                      <Button size="sm" variant="danger" onClick={() => handleDelete(active.id)}>
-                        Eliminar
-                      </Button>
+                      <>
+                        {!active.parent_id && (
+                          <Button size="sm" variant="ghost" onClick={() => handleSplit(active)}>
+                            Mover a perfil propio
+                          </Button>
+                        )}
+                        <Button size="sm" variant="danger" onClick={() => handleDelete(active.id)}>
+                          Eliminar
+                        </Button>
+                      </>
                     )
                   }
                 >
@@ -396,6 +487,29 @@ export default function CvPage() {
       )}
     </>
   );
+}
+
+/** Mismo criterio que `report_filename` del backend: ASCII y sin espacios. */
+function reportFileName(resume: Resume) {
+  const base = resume.parsed.contact.full_name || resume.label || "CV";
+  const slug = base
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return `Informe-CV-${slug || "CV"}.pdf`;
+}
+
+function downloadFile(file: File) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function Row({ label, value }: { label: string; value: string }) {

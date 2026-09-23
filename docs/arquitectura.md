@@ -37,8 +37,26 @@ servicio no conoce FastAPI.
 | Modelos | `app/models/` | Tablas SQLAlchemy. Ver [Modelo de datos](modelo-de-datos.md) |
 | Esquemas | `app/schemas/` | Pydantic: contrato de la API y contrato de salida del LLM |
 
-`app/api/deps.py` concentra las dependencias compartidas (sesión de BD, usuario
+`app/api/deps.py` concentra las dependencias compartidas (sesión de BD, perfil
 actual, resolución de `job_id`/`resume_id`/`application_id` con 404 automático).
+
+## Perfiles
+
+Varias personas comparten instalación. El perfil activo viaja en la cabecera
+`X-Profile-Id` y `get_current_user` lo resuelve; sin cabecera, el perfil por
+defecto. Como todas las rutas ya filtraban por `user.id`, ninguna tuvo que
+cambiar. Ver [ADR 0008](adr/0008-multiperfil.md).
+
+```mermaid
+graph LR
+    LS["localStorage<br/>profileId"] --> FE["frontend<br/>lib/api.ts"]
+    CS["chrome.storage<br/>profileId"] --> EXT["extensión<br/>popup.js"]
+    FE -->|X-Profile-Id| DEP["deps.get_current_user"]
+    EXT -->|X-Profile-Id| DEP
+    DEP --> U[("users<br/>= perfiles")]
+    U --> R["resumes · applications<br/>interview_sessions · qa_entries"]
+    J[("jobs · company_intel")] -. compartidos .- DEP
+```
 
 ## La decisión que explica casi todo
 
@@ -83,25 +101,51 @@ sequenceDiagram
 `DocumentSignals` existe porque hay penalizaciones de ATS que solo se ven mirando
 el archivo, no el texto ya extraído: tablas, multi-columna, imágenes, fuentes raras.
 
-## Flujo 2 — De la vacante al match
+El informe se puede descargar en PDF (`GET /resumes/{id}/report.pdf`). Lo maqueta
+`services/report_pdf.py` con reportlab usando la paleta de `globals.css`; las
+fuentes estándar de PDF solo cubren Windows-1252, así que los caracteres fuera de
+ese juego (flechas, emojis del LLM) se sustituyen antes de dibujar.
+
+## Flujo 2 - Del CV a las vacantes y al match
 
 ```mermaid
 sequenceDiagram
     participant J as routes/jobs.py
+    participant P as services/job_search.py
     participant SR as services/sources/
+    participant G as services/geo.py
     participant N as services/jobs.py
     participant M as services/matching.py
     participant DB as Postgres
 
-    J->>SR: POST /jobs/ingest
-    SR-->>J: RawJob[] (fuentes públicas, sin API key)
-    J->>N: normalizar
-    N->>N: LLM_FAST_MODEL → JobNormalized + JobRequirements
+    J->>P: GET /jobs/search-plan?resume_id
+    P->>P: Claude (effort low) → 2-4 puestos en inglés + país
+    J->>SR: POST /jobs/ingest (puestos × fuentes, en paralelo)
+    SR-->>J: RawJob[] (Himalayas/Jobicy ya filtran por país)
+    J->>G: location_matches() para las que no filtran
+    J->>N: normalizar (heurística; Claude si analyze=true)
     N->>DB: upsert por (source, external_id)
     J->>M: GET /jobs/{id}/match
     M->>M: 0.50 skills + 0.35 semántico + 0.15 seniority
     M->>DB: JobMatch cacheado
 ```
+
+**Por qué un plan de búsqueda.** Las bolsas globales están en inglés y buscan por
+título de puesto: "Diseñadora Gráfica" o "Computer Engineering Student &
+Automation Technologist" no devuelven nada útil. Claude traduce el CV a títulos
+realistas; sin API key se usan los del CV tal cual. El usuario los ve y los
+edita, y la última versión usada se guarda por CV.
+
+**Por qué filtrar por país.** Casi todo lo "remoto" tiene restricción geográfica
+("USA only", "LATAM", 70 países). `services/geo.py` reduce eso a una pregunta:
+¿se puede postular desde el país del perfil? Ante la duda (sin ubicación,
+"Remote" a secas) la vacante se conserva. El mismo criterio filtra el listado
+(`country` en `/jobs/search`) mediante `geo.sql_patterns()`.
+
+**Fuentes.** Himalayas y Jobicy (globales, con filtro de país en la API),
+Remotive y RemoteOK (remotas, se filtran al ingerir) y Arbeitnow (casi todo
+Alemania, desactivada por defecto). El feed público de Remotive ya ignora el
+parámetro de búsqueda, así que se filtra localmente por título y etiquetas.
 
 El score no es coseno puro. Un reclutador filtra por skills duras antes que por
 parecido general, así que la cobertura de requisitos pesa más y la similitud
@@ -117,6 +161,8 @@ Las fuentes de `services/sources/` son solo las que ofrecen API pública sin key
 La extensión vive en `extension/` (Manifest V3): un `popup` para capturar y ver
 el match, `extractors.js` con un extractor por portal, y `autofill.js` para
 rellenar formularios. Sus `host_permissions` apuntan solo a `localhost:8000`.
+Con más de un perfil, el popup muestra un selector: la captura, el match y el
+autofill usan el perfil elegido.
 
 Detalle en [ADR 0004](adr/0004-extension-en-vez-de-scraping.md).
 
@@ -129,11 +175,16 @@ contrato se ve en un solo sitio.
 | Ruta | Pantalla |
 |---|---|
 | `/` | Panel |
-| `/cv` | Mi CV: subida, informe ATS, diff de tailoring |
-| `/vacantes` · `/vacantes/[id]` | Listado con filtros · dossier e intel |
+| `/cv` | Mis CV: subida, informe ATS, PDF para descargar o compartir, diff de tailoring |
+| `/vacantes` · `/vacantes/[id]` | Búsqueda según un CV, filtro por país, match · dossier e intel |
 | `/pipeline` | Kanban de postulaciones |
 | `/entrevistas` | Simulacro y banco de respuestas |
+| `/perfiles` | Crear, renombrar, cambiar y borrar perfiles |
 | `/ajustes` | Preferencias de búsqueda |
+
+El selector de perfil vive en la barra lateral (`components/nav.tsx`). Todas las
+pantallas piden sus datos con el perfil activo porque `lib/api.ts` añade la
+cabecera en cada petición; los GET que la red corta se reintentan una vez.
 
 ## Notas relacionadas
 

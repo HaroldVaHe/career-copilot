@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession, ResumeDep
@@ -18,6 +18,7 @@ from app.schemas.io import (
 )
 from app.schemas.resume import ResumeData
 from app.services import ats as ats_service
+from app.services import report_pdf
 from app.services import resume as resume_service
 from app.services import tailoring
 from app.services.documents import UnsupportedDocument, parse_document
@@ -132,6 +133,24 @@ def update_resume(resume: ResumeDep, payload: ResumeUpdate, db: DbSession, user:
 @router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_resume(resume: ResumeDep, db: DbSession):
     db.delete(resume)
+
+
+@router.get(
+    "/{resume_id}/report.pdf",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+def resume_report_pdf(resume: ResumeDep):
+    """Informe PDF con puntuación, quick wins, hallazgos, reescrituras, keywords y perfil."""
+    data = ResumeData.model_validate(resume.parsed or {})
+    report = AtsReport.model_validate(resume.ats_report) if resume.ats_report else None
+    pdf = report_pdf.build_report_pdf(data, report, resume.target_role, resume.label)
+    filename = report_pdf.report_filename(data, resume.label)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/{resume_id}/audit", response_model=AtsReport)

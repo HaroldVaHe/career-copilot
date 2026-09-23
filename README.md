@@ -4,7 +4,7 @@ Copiloto local de búsqueda de empleo. Ingesta tu CV, lo audita contra criterios
 ATS, agrega vacantes, las puntúa contra tu perfil, adapta el CV a cada oferta,
 investiga la empresa y te entrena para la entrevista.
 
-Corre entero en tu máquina: un solo usuario, sin cuentas, sin nada en la nube
+Corre entero en tu máquina: un perfil por persona, sin cuentas, sin nada en la nube
 salvo las llamadas a la API de Claude.
 
 ## Stack
@@ -26,7 +26,7 @@ cp .env.example .env          # rellena ANTHROPIC_API_KEY
 cd backend
 python -m venv .venv && .venv/Scripts/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --reload-dir app --timeout-graceful-shutdown 3 --port 8000
 ```
 
 API en <http://localhost:8000> · Swagger en <http://localhost:8000/docs>
@@ -38,14 +38,17 @@ variables de entorno en [docs/desarrollo.md](docs/desarrollo.md).
 
 Los seis están completos de punta a punta (backend + pantalla):
 
-1. **CV** — parsing a JSON, auditoría ATS 0-100, tailoring con diff, versionado. → `/cv`
-2. **Vacantes** — ingesta de fuentes públicas, filtros y matching semántico. → `/vacantes`
-3. **Extensión** — captura de ofertas desde el navegador y autofill. → `extension/`
+1. **CV** — parsing a JSON, auditoría ATS 0-100, informe PDF para compartir, tailoring con diff, versionado. → `/cv`
+2. **Vacantes** — búsqueda global según el CV (puestos y país), filtros y matching semántico. → `/vacantes`
+3. **Extensión** — captura de ofertas desde el navegador, autofill y selector de perfil. → `extension/`
 4. **Postulaciones** — Kanban, checklist generado por IA, timeline, cover letters. → `/pipeline`
 5. **Inteligencia** — empresa, proceso de entrevista y benchmark salarial. → dossier de la vacante
 6. **Entrevistas** — simulacro con feedback y banco de respuestas reutilizables. → `/entrevistas`
 
-55 tests pasando sobre la parte determinista (taxonomía y scoring).
+Además, **perfiles**: varias personas en la misma instalación, cada una con sus
+CV, pipeline y entrevistas. → `/perfiles` y selector en la barra lateral.
+
+87 tests pasando (parte determinista, PDF, geografía de vacantes y perfiles).
 
 ## Documentación
 

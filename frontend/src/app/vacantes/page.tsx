@@ -22,7 +22,13 @@ import {
   formatMoney,
 } from "@/components/ui";
 import { api, ApiError, type JobSearchQuery } from "@/lib/api";
-import type { JobWithMatch } from "@/lib/types";
+import type {
+  IngestResponse,
+  JobWithMatch,
+  ResumeSummary,
+  SearchPlan,
+  SourceInfo,
+} from "@/lib/types";
 
 const REMOTE_LABELS: Record<string, string> = {
   remote: "Remoto",
@@ -38,6 +44,12 @@ export default function VacantesPage() {
   const [ingestOpen, setIngestOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
 
+  const [resumes, setResumes] = useState<ResumeSummary[]>([]);
+  const [resumeId, setResumeId] = useState<number | undefined>(undefined);
+  // La búsqueda espera a saber qué CV usar: así sale una sola petición y no una
+  // sin CV seguida de otra con CV.
+  const [resumesReady, setResumesReady] = useState(false);
+
   const [query, setQuery] = useState<JobSearchQuery>({ sort: "score", limit: 50 });
   const [text, setText] = useState("");
   const [semantic, setSemantic] = useState("");
@@ -45,53 +57,70 @@ export default function VacantesPage() {
   const [remote, setRemote] = useState<string>("");
   const [days, setDays] = useState<string>("");
   const [skills, setSkills] = useState("");
-
-  const search = useCallback(async (payload: JobSearchQuery) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.searchJobs(payload);
-      setResults(response.results);
-    } catch (e) {
-      setError((e as ApiError).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [country, setCountry] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
+    api
+      .listResumes()
+      .then((list) => {
+        setResumes(list);
+        setResumeId((list.find((r) => r.is_primary) ?? list[0])?.id);
+      })
+      .catch(() => {})
+      .finally(() => setResumesReady(true));
+  }, []);
+
+  const search = useCallback(
+    async (payload: JobSearchQuery) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await api.searchJobs(payload, resumeId);
+        setResults(response.results);
+      } catch (e) {
+        setError((e as ApiError).message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [resumeId],
+  );
+
+  useEffect(() => {
+    if (!resumesReady) return;
+    const controller = new AbortController();
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await api.searchJobs(query);
-        if (!cancelled) setResults(response.results);
+        const response = await api.searchJobs(query, resumeId, controller.signal);
+        setResults(response.results);
       } catch (e) {
-        if (!cancelled) setError((e as ApiError).message);
+        if (!controller.signal.aborted) setError((e as ApiError).message);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [query]);
+    // Cancela de verdad la petición anterior al cambiar filtros o CV.
+    return () => controller.abort();
+  }, [query, resumeId, resumesReady]);
 
-  const applyFilters = () => {
-    setQuery({
-      sort: semantic ? "score" : query.sort,
-      limit: 50,
-      q: text || undefined,
-      semantic: semantic || undefined,
-      min_score: minScore ? Number(minScore) : undefined,
-      remote_type: remote ? [remote] : undefined,
-      posted_within_days: days ? Number(days) : undefined,
-      required_skills: skills
-        ? skills.split(",").map((s) => s.trim()).filter(Boolean)
-        : undefined,
-    });
-  };
+  const buildQuery = (overrides: Partial<JobSearchQuery> = {}): JobSearchQuery => ({
+    sort: semantic ? "score" : query.sort,
+    limit: 50,
+    q: text || undefined,
+    semantic: semantic || undefined,
+    min_score: minScore ? Number(minScore) : undefined,
+    remote_type: remote ? [remote] : undefined,
+    posted_within_days: days ? Number(days) : undefined,
+    country: country.trim() || undefined,
+    required_skills: skills
+      ? skills.split(",").map((s) => s.trim()).filter(Boolean)
+      : undefined,
+    ...overrides,
+  });
+
+  const applyFilters = () => setQuery(buildQuery());
 
   const clear = () => {
     setText("");
@@ -100,6 +129,7 @@ export default function VacantesPage() {
     setRemote("");
     setDays("");
     setSkills("");
+    setCountry("");
     setQuery({ sort: "score", limit: 50 });
   };
 
@@ -107,12 +137,12 @@ export default function VacantesPage() {
     <>
       <PageHeader
         title="Vacantes"
-        description="Agregación de fuentes públicas, búsqueda por significado y match score contra tu CV."
+        description="Bolsas globales filtradas por el país donde vives, búsqueda por significado y match score contra el CV que elijas."
         actions={
           <>
             <Button onClick={() => setManualOpen(true)}>Pegar una oferta</Button>
             <Button variant="primary" onClick={() => setIngestOpen(true)}>
-              Importar vacantes
+              Buscar vacantes para un CV
             </Button>
           </>
         }
@@ -121,6 +151,30 @@ export default function VacantesPage() {
       <Card className="mb-6">
         {/* Los filtros van en una sola fila por encima de los resultados. */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="CV para el match">
+            <Select
+              value={resumeId ?? ""}
+              onChange={(e) => setResumeId(e.target.value ? Number(e.target.value) : undefined)}
+              className="w-full"
+              disabled={resumes.length === 0}
+            >
+              {resumes.length === 0 && <option value="">Sin CV en este perfil</option>}
+              {resumes.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.is_primary ? "★ " : ""}
+                  {r.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Puedo postular desde" hint="País: incluye su región y «worldwide»">
+            <Input
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
+              placeholder="Colombia, España…"
+            />
+          </Field>
           <Field label="Texto literal">
             <Input
               value={text}
@@ -275,11 +329,22 @@ export default function VacantesPage() {
         </>
       )}
 
-      <IngestModal
-        open={ingestOpen}
-        onClose={() => setIngestOpen(false)}
-        onDone={() => search(query)}
-      />
+      {/* Se monta solo al abrir: así cada apertura empieza con el estado limpio. */}
+      {ingestOpen && (
+        <IngestModal
+          open
+          onClose={() => setIngestOpen(false)}
+          resumes={resumes}
+          initialResumeId={resumeId}
+          onDone={(usedResumeId, usedCountry) => {
+            // Tras importar para un CV, el listado se pone en ese CV y ese país:
+            // es exactamente lo que el usuario acaba de pedir.
+            if (usedResumeId) setResumeId(usedResumeId);
+            setCountry(usedCountry);
+            setQuery(buildQuery({ country: usedCountry || undefined, sort: "score" }));
+          }}
+        />
+      )}
       <ManualJobModal
         open={manualOpen}
         onClose={() => setManualOpen(false)}
@@ -293,51 +358,242 @@ function IngestModal({
   open,
   onClose,
   onDone,
+  resumes,
+  initialResumeId,
 }: {
   open: boolean;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (resumeId: number | undefined, country: string) => void;
+  resumes: ResumeSummary[];
+  initialResumeId?: number;
 }) {
-  const [term, setTerm] = useState("");
-  const [limit, setLimit] = useState("30");
+  const [mode, setMode] = useState<"cv" | "free">(resumes.length ? "cv" : "free");
+  const [resumeId, setResumeId] = useState<number | undefined>(
+    initialResumeId ?? resumes[0]?.id,
+  );
+  const [plan, setPlan] = useState<SearchPlan | null>(null);
+  const [queries, setQueries] = useState("");
+  const [country, setCountry] = useState("");
+  const [sources, setSources] = useState<SourceInfo[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [limit, setLimit] = useState("20");
   const [analyze, setAnalyze] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<
-    { source: string; fetched?: number; created?: number; error?: string }[] | null
-  >(null);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<IngestResponse | null>(null);
   const [note, setNote] = useState("");
 
   useEffect(() => {
-    if (open) api.sources().then((s) => setNote(s.note)).catch(() => {});
-  }, [open]);
+    api
+      .sources()
+      .then((s) => {
+        setNote(s.note);
+        setSources(s.details);
+        setSelected(new Set(s.details.filter((d) => d.default).map((d) => d.name)));
+      })
+      .catch(() => {});
+  }, []);
+
+  const applyPlan = (next: SearchPlan) => {
+    setPlan(next);
+    setQueries(next.queries.join(", "));
+    setCountry(next.country);
+  };
+
+  useEffect(() => {
+    if (mode !== "cv" || !resumeId) return;
+    let cancelled = false;
+    api
+      .searchPlan(resumeId)
+      .then((next) => !cancelled && applyPlan(next))
+      .catch((e: ApiError) => !cancelled && setError(e.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, resumeId]);
+
+  // Mientras no haya plan para el CV elegido, se está calculando.
+  const planLoading = mode === "cv" && !!resumeId && plan?.resume_id !== resumeId && !error;
+
+  const suggestAgain = () => {
+    if (!resumeId) return;
+    setPlan(null);
+    setError(null);
+    api
+      .searchPlan(resumeId, true)
+      .then(applyPlan)
+      .catch((e: ApiError) => setError(e.message));
+  };
+
+  const queryList = queries
+    .split(",")
+    .map((q) => q.trim())
+    .filter(Boolean);
 
   const run = async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await api.ingest({
-        query: term,
+        sources: [...selected],
+        queries: queryList,
+        country,
+        resume_id: mode === "cv" ? resumeId : undefined,
         limit: Number(limit),
         analyze,
       });
-      setResult(response.results);
-      onDone();
+      setResult(response);
+      onDone(mode === "cv" ? resumeId : undefined, response.country);
+    } catch (e) {
+      setError((e as ApiError).message);
     } finally {
       setLoading(false);
     }
   };
 
+  // Una fila por fuente sumando todas sus consultas: es lo que interesa de un vistazo.
+  const bySource = result
+    ? Object.values(
+        result.results.reduce<
+          Record<string, { source: string; created: number; fetched: number; skipped: number; errors: string[] }>
+        >((acc, row) => {
+          const entry = (acc[row.source] ??= {
+            source: row.source,
+            created: 0,
+            fetched: 0,
+            skipped: 0,
+            errors: [],
+          });
+          entry.created += row.created ?? 0;
+          entry.fetched += row.fetched ?? 0;
+          entry.skipped += row.skipped ?? 0;
+          if (row.error) entry.errors.push(row.error);
+          return acc;
+        }, {}),
+      )
+    : [];
+  const totalCreated = bySource.reduce((sum, s) => sum + s.created, 0);
+
   return (
-    <Modal open={open} onClose={onClose} title="Importar vacantes">
-      <div className="space-y-4">
-        <Field label="Término de búsqueda" hint="Vacío = trae lo último de cada fuente.">
-          <Input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="python" />
-        </Field>
-        <Field label="Máximo por fuente">
+    <Modal open={open} onClose={onClose} title="Buscar vacantes" wide>
+      <div className="space-y-5">
+        {error && (
+          <Alert tone="critical" title="No se pudo completar">
+            {error}
+          </Alert>
+        )}
+
+        <div className="inline-flex rounded-lg border p-0.5 text-sm">
+          {(
+            [
+              ["cv", "Según un CV"],
+              ["free", "Búsqueda libre"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setMode(value)}
+              disabled={value === "cv" && resumes.length === 0}
+              className={`rounded-md px-3 py-1.5 transition-colors disabled:opacity-40 ${
+                mode === value ? "bg-surface-2 font-medium text-ink" : "text-ink-secondary"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "cv" && (
+          <Field label="CV">
+            <Select
+              value={resumeId ?? ""}
+              onChange={(e) => setResumeId(Number(e.target.value))}
+              className="w-full"
+            >
+              {resumes.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.is_primary ? "★ " : ""}
+                  {r.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-[1fr_14rem]">
+          <Field
+            label={mode === "cv" ? "Puestos a buscar" : "Términos de búsqueda"}
+            hint={
+              mode === "cv"
+                ? "Deducidos del CV, en inglés porque así publican las bolsas globales. Edítalos si quieres; separados por coma."
+                : "Separados por coma. Vacío = lo último de cada fuente."
+            }
+          >
+            <Input
+              value={queries}
+              onChange={(e) => setQueries(e.target.value)}
+              placeholder={planLoading ? "Analizando el CV…" : "Graphic Designer, UX Designer"}
+              disabled={planLoading}
+            />
+          </Field>
+          <Field label="País donde vives" hint="Descarta vacantes no elegibles desde ahí">
+            <Input
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              placeholder="Colombia"
+              disabled={planLoading}
+            />
+          </Field>
+        </div>
+
+        {mode === "cv" && plan && !planLoading && (
+          <p className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+            {plan.origin === "ai" && "Sugerido por Claude a partir del CV."}
+            {plan.origin === "heuristic" && "Sacado de los títulos del CV (sin IA)."}
+            {plan.origin === "saved" && "Última búsqueda que usaste con este CV."}
+            {plan.region && ` Región: ${plan.region}.`}
+            <button className="text-accent hover:underline" onClick={suggestAgain}>
+              Volver a sugerir
+            </button>
+          </p>
+        )}
+
+        <div>
+          <p className="mb-2 text-xs font-medium text-ink-secondary">Fuentes</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {sources.map((source) => (
+              <label
+                key={source.name}
+                className="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-surface-2"
+              >
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={selected.has(source.name)}
+                  onChange={(e) => {
+                    const next = new Set(selected);
+                    if (e.target.checked) next.add(source.name);
+                    else next.delete(source.name);
+                    setSelected(next);
+                  }}
+                />
+                <span className="min-w-0">
+                  <span className="text-ink">{source.label}</span>
+                  {source.filters_country && (
+                    <span className="ml-1.5 text-xs text-ink-muted">· filtra por país</span>
+                  )}
+                  <span className="block text-xs text-ink-muted">{source.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <Field label="Máximo por fuente y puesto">
           <Select value={limit} onChange={(e) => setLimit(e.target.value)}>
             <option value="10">10</option>
-            <option value="30">30</option>
-            <option value="60">60</option>
-            <option value="100">100</option>
+            <option value="20">20</option>
+            <option value="40">40</option>
           </Select>
         </Field>
         <label className="flex items-start gap-2 text-sm text-ink-secondary">
@@ -363,26 +619,46 @@ function IngestModal({
         )}
 
         {result && (
-          <ul className="space-y-1 text-sm">
-            {result.map((item) => (
-              <li key={item.source} className="flex items-center gap-2">
-                <span
-                  aria-hidden
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: item.error ? "var(--critical)" : "var(--good)" }}
-                />
-                <span className="text-ink">{item.source}:</span>
-                <span className="text-ink-secondary">
-                  {item.error ?? `${item.created} nuevas de ${item.fetched}`}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="rounded-lg border p-4">
+            <p className="mb-2 text-sm font-medium text-ink">
+              {totalCreated} vacantes nuevas
+              {result.country && ` elegibles desde ${result.country}`}
+            </p>
+            <ul className="space-y-1 text-sm">
+              {bySource.map((item) => {
+                const failed = item.errors.length > 0 && item.fetched === 0;
+                return (
+                  <li key={item.source} className="flex items-start gap-2">
+                    <span
+                      aria-hidden
+                      className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: failed ? "var(--critical)" : "var(--good)" }}
+                    />
+                    <span className="text-ink">{item.source}:</span>
+                    <span className="text-ink-secondary">
+                      {failed
+                        ? item.errors[0]
+                        : `${item.created} nuevas de ${item.fetched} encontradas` +
+                          (item.skipped ? ` · ${item.skipped} descartadas por país` : "")}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
 
-        <Button variant="primary" onClick={run} loading={loading}>
-          Importar
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            onClick={run}
+            loading={loading}
+            disabled={selected.size === 0 || planLoading || (mode === "cv" && !resumeId)}
+          >
+            {loading ? "Buscando en las bolsas…" : "Buscar e importar"}
+          </Button>
+          {result && <Button onClick={onClose}>Ver resultados</Button>}
+        </div>
       </div>
     </Modal>
   );

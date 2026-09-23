@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.deps import ProfileNotFound
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
@@ -70,6 +71,11 @@ async def llm_unavailable_handler(request: Request, exc: LLMUnavailable):
 async def llm_error_handler(request: Request, exc: LLMError):
     log.error("Fallo del LLM en %s: %s", request.url.path, exc)
     return JSONResponse(status_code=502, content={"detail": str(exc), "code": "llm_error"})
+
+
+@app.exception_handler(ProfileNotFound)
+async def profile_not_found_handler(request: Request, exc: ProfileNotFound):
+    return JSONResponse(status_code=404, content={"detail": str(exc), "code": "profile_not_found"})
 
 
 app.include_router(api_router, prefix="/api/v1")

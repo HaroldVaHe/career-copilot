@@ -1,7 +1,7 @@
 # ADR 0007 — Un solo usuario, sin autenticación
 
 - **Fecha:** 2026-09-21
-- **Estado:** Aceptado
+- **Estado:** Reemplazado por [ADR 0008](0008-multiperfil.md)
 
 ## Contexto
 

@@ -148,6 +148,7 @@ hr {
   color: var(--ink-secondary);
 }
 .field input,
+.field select,
 .field textarea {
   width: 100%;
   padding: 6px 8px;
@@ -157,6 +158,14 @@ hr {
   color: var(--ink);
   font-family: inherit;
   font-size: 12px;
+}
+
+.profile-bar {
+  padding: 8px 14px 0;
+}
+
+.profile-bar .field {
+  margin-bottom: 0;
 }
 
 .job-title {

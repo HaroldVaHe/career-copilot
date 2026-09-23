@@ -47,7 +47,12 @@ class CaptureResponse(BaseModel):
 @router.get("/ping")
 def ping(user: CurrentUser):
     """La extensión llama aquí al cargar para confirmar que la API responde."""
-    return {"ok": True, "user": user.email, "llm": llm.available}
+    return {
+        "ok": True,
+        "user": user.full_name or user.email,
+        "profile_id": user.id,
+        "llm": llm.available,
+    }
 
 
 @router.post("", response_model=CaptureResponse, status_code=status.HTTP_201_CREATED)

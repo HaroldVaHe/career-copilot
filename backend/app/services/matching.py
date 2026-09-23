@@ -9,6 +9,7 @@ taxonomía no captura (dominio, tipo de producto, forma de trabajar).
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -168,12 +169,16 @@ def upsert(db: Session, resume: Resume, job: Job, with_analysis: bool = False) -
     """Calcula (y cachea) el match. El análisis LLM solo si se pide explícitamente."""
     result = compute(resume, job)
 
+    # El frontend a veces pide el mismo match dos veces a la vez; un SELECT + INSERT
+    # chocaba con `uq_match_resume_job`. Se asegura la fila de forma atómica.
+    db.execute(
+        pg_insert(JobMatch)
+        .values(resume_id=resume.id, job_id=job.id)
+        .on_conflict_do_nothing(constraint="uq_match_resume_job")
+    )
     row = db.scalar(
         select(JobMatch).where(JobMatch.resume_id == resume.id, JobMatch.job_id == job.id)
     )
-    if row is None:
-        row = JobMatch(resume_id=resume.id, job_id=job.id)
-        db.add(row)
 
     row.score = result.score
     row.semantic_score = result.semantic_score

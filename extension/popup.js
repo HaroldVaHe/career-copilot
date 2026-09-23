@@ -5,18 +5,52 @@ const $ = (id) => document.getElementById(id);
 
 let apiUrl = DEFAULT_API;
 let capturedJobId = null;
+// Perfil al que se capturan ofertas y del que sale el autofill. null = el por defecto.
+let profileId = null;
 
 /* -------------------------------------------------------------------------- */
 async function api(path, options = {}) {
   const res = await fetch(`${apiUrl}/api/v1${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...(profileId ? { "X-Profile-Id": String(profileId) } : {}),
+      ...options.headers,
+    },
   });
   const payload = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(payload?.detail ?? `Error ${res.status}`);
+    const error = new Error(payload?.detail ?? `Error ${res.status}`);
+    error.code = payload?.code;
+    throw error;
   }
   return payload;
+}
+
+async function setProfile(id) {
+  profileId = id;
+  if (id) await chrome.storage.sync.set({ profileId: id });
+  else await chrome.storage.sync.remove("profileId");
+}
+
+/** Rellena el selector de perfil. Si el guardado ya no existe, vuelve al por defecto. */
+async function loadProfiles() {
+  const profiles = await api("/profiles");
+  if (profileId && !profiles.some((p) => p.id === profileId)) await setProfile(null);
+
+  const select = $("profile");
+  select.replaceChildren(
+    ...profiles.map((p) => {
+      const option = document.createElement("option");
+      option.value = String(p.id);
+      option.textContent = p.headline ? `${p.full_name} · ${p.headline}` : p.full_name;
+      return option;
+    }),
+  );
+  const fallback = profiles.find((p) => p.is_default) ?? profiles[0];
+  select.value = String(profileId ?? fallback?.id ?? "");
+  // Con un solo perfil el selector no aporta nada.
+  $("profile-bar").classList.toggle("hidden", profiles.length < 2);
 }
 
 function showError(message) {
@@ -32,16 +66,25 @@ async function activeTab() {
 
 /* -------------------------------------------------------------------------- */
 async function init() {
-  const stored = await chrome.storage.sync.get("apiUrl");
+  const stored = await chrome.storage.sync.get(["apiUrl", "profileId"]);
   apiUrl = stored.apiUrl || DEFAULT_API;
+  profileId = stored.profileId || null;
   $("api-url").value = apiUrl;
 
   try {
-    const health = await api("/capture/ping");
+    let health;
+    try {
+      health = await api("/capture/ping");
+    } catch (error) {
+      if (error.code !== "profile_not_found") throw error;
+      await setProfile(null); // el perfil guardado se borró desde el dashboard
+      health = await api("/capture/ping");
+    }
     $("status").textContent = health.llm
       ? `Conectado · ${health.user}`
-      : `Conectado · sin API key de Claude`;
+      : `Conectado · ${health.user} · sin API key de Claude`;
     $("status").className = "status ok";
+    await loadProfiles();
   } catch {
     $("status").textContent = "API sin conexión";
     $("status").className = "status bad";
@@ -50,6 +93,18 @@ async function init() {
     );
   }
 }
+
+$("profile").addEventListener("change", async (event) => {
+  const id = Number(event.target.value);
+  const option = event.target.selectedOptions[0];
+  await setProfile(id || null);
+  // Lo capturado antes pertenece al perfil anterior: se limpia el panel.
+  capturedJobId = null;
+  $("result").classList.add("hidden");
+  $("autofill-result").textContent = "";
+  showError("");
+  $("status").textContent = `Conectado · ${option?.textContent.split(" · ")[0] ?? ""}`;
+});
 
 $("settings-toggle").addEventListener("click", () => {
   $("settings").classList.toggle("hidden");
@@ -170,7 +225,9 @@ $("open-app").addEventListener("click", () => {
   if (!capturedJobId) return;
   // El dashboard vive en 3000; la API en 8000.
   const dashboard = apiUrl.replace(/:\d+$/, ":3000");
-  chrome.tabs.create({ url: `${dashboard}/vacantes/${capturedJobId}` });
+  // `?perfil=` hace que el dashboard abra el dossier con el mismo perfil que la extensión.
+  const query = profileId ? `?perfil=${profileId}` : "";
+  chrome.tabs.create({ url: `${dashboard}/vacantes/${capturedJobId}${query}` });
 });
 
 /* -------------------------------------------------------------------------- */

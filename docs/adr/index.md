@@ -17,6 +17,7 @@ decisión actual.
 | [0004](0004-extension-en-vez-de-scraping.md) | Extensión de navegador en vez de scraping | Aceptado |
 | [0005](0005-tailoring-con-aprobacion.md) | El tailoring propone, nunca guarda solo | Aceptado |
 | [0006](0006-salida-estructurada-llm.md) | Un único cliente LLM con salida estructurada | Aceptado |
-| [0007](0007-single-tenant.md) | Un solo usuario, sin autenticación | Aceptado |
+| [0007](0007-single-tenant.md) | Un solo usuario, sin autenticación | Reemplazado por 0008 |
+| [0008](0008-multiperfil.md) | Varios perfiles por cabecera `X-Profile-Id`, sin autenticación | Aceptado |
 
 Plantilla: [`../_templates/adr.md`](../_templates/adr.md)

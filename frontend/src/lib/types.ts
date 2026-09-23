@@ -386,6 +386,49 @@ export interface QAEntry {
   created_at: string;
 }
 
+export interface Profile {
+  id: number;
+  full_name: string;
+  is_default: boolean;
+  headline: string;
+  resumes: number;
+  applications: number;
+  best_score: number | null;
+  created_at: string | null;
+}
+
+export interface SearchPlan {
+  resume_id: number | null;
+  queries: string[];
+  country: string;
+  region: string;
+  origin: "ai" | "heuristic" | "saved";
+}
+
+export interface SourceInfo {
+  name: string;
+  label: string;
+  description: string;
+  default: boolean;
+  filters_country: boolean;
+}
+
+export interface IngestResult {
+  source: string;
+  query: string;
+  fetched: number;
+  skipped: number;
+  created?: number;
+  updated?: number;
+  error?: string;
+}
+
+export interface IngestResponse {
+  results: IngestResult[];
+  queries: string[];
+  country: string;
+}
+
 export interface Health {
   status: string;
   database: boolean;

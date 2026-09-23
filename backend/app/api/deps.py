@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Path, status
+from fastapi import Depends, Header, HTTPException, Path, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,19 +14,42 @@ from app.models import Application, Job, Resume, User
 
 DbSession = Annotated[Session, Depends(get_db)]
 
+PROFILE_HEADER = "X-Profile-Id"
 
-def get_current_user(db: DbSession) -> User:
-    """App de un solo usuario: siempre el perfil local del .env.
 
-    Si algún día se abre a varios usuarios, este es el único punto a cambiar
-    (leer el token, resolver el usuario) — el resto de la API ya depende de aquí.
-    """
+def default_profile(db: Session) -> User:
+    """El perfil sembrado desde el .env. Es el que se usa si no llega cabecera."""
     user = db.scalar(select(User).where(User.email == settings.default_user_email))
     if user is None:
         user = User(email=settings.default_user_email, full_name=settings.default_user_name)
         db.add(user)
         db.flush()
     return user
+
+
+def get_current_user(
+    db: DbSession,
+    x_profile_id: Annotated[int | None, Header(alias=PROFILE_HEADER)] = None,
+) -> User:
+    """Perfil activo: una persona con sus CV, pipeline, entrevistas y preferencias.
+
+    Cada fila de `users` es un perfil (ver ADR 0008). El frontend y la extensión
+    mandan `X-Profile-Id`; sin cabecera se usa el perfil por defecto, así que los
+    clientes antiguos siguen funcionando. No hay autenticación: es una app local.
+    """
+    if x_profile_id is None:
+        return default_profile(db)
+    user = db.get(User, x_profile_id)
+    if user is None:
+        raise ProfileNotFound(x_profile_id)
+    return user
+
+
+class ProfileNotFound(Exception):
+    """El cliente guarda un perfil que ya no existe. `main.py` lo traduce a 404 con código."""
+
+    def __init__(self, profile_id: int):
+        super().__init__(f"El perfil {profile_id} no existe. Elige otro en la barra lateral.")
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
