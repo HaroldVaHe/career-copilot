@@ -12,6 +12,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
@@ -75,12 +76,18 @@ def research_company(db: Session, company: str, force: bool = False) -> CompanyI
     data.company_name = data.company_name or company
     data.sources = list(dict.fromkeys([*data.sources, *sources]))[:20]
 
-    if row is None:
-        row = CompanyIntel(company_key=key, company_name=company)
-        db.add(row)
-    row.data = data.model_dump()
-    row.refreshed_at = datetime.now(timezone.utc)
-    db.flush()
+    # La investigación tarda ~30 s: si llegan dos peticiones a la vez (doble clic,
+    # carta + dossier) ambas llegan aquí sin fila. Upsert en vez de INSERT.
+    now = datetime.now(timezone.utc)
+    stmt = pg_insert(CompanyIntel).values(
+        company_key=key, company_name=company, data=data.model_dump(), refreshed_at=now
+    )
+    db.execute(
+        stmt.on_conflict_do_update(
+            index_elements=[CompanyIntel.company_key],
+            set_={"data": stmt.excluded.data, "refreshed_at": now, "updated_at": now},
+        )
+    )
     return data
 
 
@@ -133,11 +140,15 @@ def research_interview_process(
     data.role = data.role or role
     data.sources = list(dict.fromkeys([*data.sources, *sources]))[:20]
 
-    if row is None:
-        row = InterviewInsight(company_key=ckey, role_key=rkey)
-        db.add(row)
-    row.data = data.model_dump()
-    db.flush()
+    stmt = pg_insert(InterviewInsight).values(
+        company_key=ckey, role_key=rkey, data=data.model_dump()
+    )
+    db.execute(
+        stmt.on_conflict_do_update(
+            constraint="uq_insight_company_role",
+            set_={"data": stmt.excluded.data, "updated_at": datetime.now(timezone.utc)},
+        )
+    )
     return data
 
 
